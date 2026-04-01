@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>World Clock</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>World Clock</h1>
+      <p class="subtitle">Track time across the globe</p>
+    </header>
+
+    <div class="add-clock">
+      <select id="timezone-select">
+        <option value="">-- Select a timezone --</option>
+      </select>
+      <input id="clock-label" type="text" placeholder="Label (optional)" maxlength="24" />
+      <button id="add-btn">Add Clock</button>
+    </div>
+
+    <div id="clocks-grid" class="clocks-grid">
+      <!-- Clock cards rendered by JS -->
+    </div>
+
+    <p id="empty-state" class="empty-state">No clocks added yet. Add one above!</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
