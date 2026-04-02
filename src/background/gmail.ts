@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth'
+import { getAccessToken, getUserEmail } from './auth'
 import type { ApiError, Result } from '../shared/types/api.types'
 import type { Recipient } from '../shared/types/domain.types'
 
@@ -57,7 +57,7 @@ export async function sendEmail(params: {
   bodyPlaintext: string
 }): Promise<Result<{ messageId: string; threadId: string }>> {
   const token = await getAccessToken()
-  const userEmail = await (await import('./auth')).getUserEmail() ?? 'me'
+  const userEmail = await getUserEmail() ?? 'me'
 
   const raw = buildMimeMessage({ from: userEmail, ...params })
 
