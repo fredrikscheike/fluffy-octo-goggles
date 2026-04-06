@@ -1,79 +1,94 @@
 import { createRoot } from 'react-dom/client'
 import { createElement } from 'react'
-import { detectHost, extractTranscriptContext } from './transcript-extractor'
-import { watchForComposeWindow } from './host-adapters/gmail'
+import { detectHost } from './transcript-extractor'
+import { watchForComposeWindow, watchForEmailOpen } from './host-adapters/gmail'
 import { mountShadowContainer, unmountShadowContainer, isMounted } from './shadow-root'
-import { injectTriggerButton } from './panel-trigger'
-import { initDragInterceptor } from './drag-interceptor'
+import { injectTriggerButton, markButtonReady, markButtonIdle } from './panel-trigger'
 import type { ExtensionMessage } from '../shared/types/messages.types'
+import type { TranscriptContext } from '../shared/types/domain.types'
 
-// Dynamically imported at runtime so the CSS string can be injected into shadow DOM
-// The actual App import happens inside openPanel to keep the content script bundle lean
 let panelOpen = false
+let pendingContext: TranscriptContext | null = null  // email content captured before panel opens
 
-function sendToBackground(msg: ExtensionMessage): void {
-  chrome.runtime.sendMessage(msg)
-}
+// ── Panel lifecycle ────────────────────────────────────────────────────────────
 
-async function openPanel(): Promise<void> {
-  if (panelOpen) return
-
-  const context = extractTranscriptContext()
-
-  // Notify service worker — triggers OAuth if needed
-  chrome.runtime.sendMessage(
-    { type: 'PANEL_OPEN', payload: context ?? { transcript: '', participantNames: [], contactEmails: [], crmRecordId: null, hostType: 'unknown' } },
-    (_resp: ExtensionMessage) => {
-      // SESSION_READY or AUTH_ERROR arrives here; panel handles it via its own listener
+async function openPanel(context?: TranscriptContext | null): Promise<void> {
+  if (panelOpen) {
+    // Panel already open — if we have fresh context, dispatch it in
+    if (context?.transcript) {
+      window.dispatchEvent(new CustomEvent('pca:context-update', { detail: context }))
     }
+    return
+  }
+
+  const ctx = context ?? pendingContext ?? null
+
+  chrome.runtime.sendMessage(
+    {
+      type: 'PANEL_OPEN',
+      payload: ctx ?? { transcript: '', participantNames: [], contactEmails: [], crmRecordId: null, hostType: 'unknown' },
+    },
+    (_resp: ExtensionMessage) => {},
   )
 
-  // Dynamically import the panel CSS (Vite inlines it as a string for shadow DOM injection)
   const { default: panelCss } = await import('../panel/styles/panel.css?inline')
   const mountPoint = mountShadowContainer(panelCss)
-
-  // Dynamically import the React app to avoid loading React on every page load
   const { default: App } = await import('../panel/App')
 
   const reactRoot = createRoot(mountPoint)
   reactRoot.render(
     createElement(App, {
-      initialContext: context,
+      initialContext: ctx,
       onClose: () => {
         reactRoot.unmount()
         unmountShadowContainer()
         panelOpen = false
       },
-    })
+    }),
   )
 
   panelOpen = true
+  pendingContext = null
 }
 
-// ---- Bootstrap ----
+// ── Bootstrap ──────────────────────────────────────────────────────────────────
 
 const host = detectHost()
 
 if (host !== 'unknown') {
-  // Inject the floating trigger button
-  injectTriggerButton().addEventListener('click', openPanel)
+  const btn = injectTriggerButton()
+  btn.addEventListener('click', () => openPanel(pendingContext))
 
   if (host === 'gmail') {
-    watchForComposeWindow(openPanel)
-    initDragInterceptor()
+    // Watch for compose window (existing flow)
+    watchForComposeWindow(() => openPanel(null))
+
+    // Watch for emails being opened — auto-populate context and pulse the button
+    watchForEmailOpen((ctx) => {
+      pendingContext = ctx
+      markButtonReady(btn)
+
+      // If the panel is already open, push the new context straight in
+      if (panelOpen) {
+        window.dispatchEvent(new CustomEvent('pca:context-update', { detail: ctx }))
+      }
+    })
   }
 
-  // SPA navigation: re-run extraction when the URL changes
+  // SPA navigation — close stale panel, reset button state
   let lastHref = window.location.href
-  const navObserver = new MutationObserver(() => {
+  new MutationObserver(() => {
     if (window.location.href !== lastHref) {
       lastHref = window.location.href
       if (isMounted()) {
-        // Close stale panel on navigation
         unmountShadowContainer()
         panelOpen = false
       }
+      // Clear pending context when navigating away from a thread
+      if (!window.location.hash.match(/#(inbox|sent|starred|all|trash|spam|label|search)\/[a-zA-Z0-9]+/)) {
+        pendingContext = null
+        markButtonIdle(btn)
+      }
     }
-  })
-  navObserver.observe(document.body, { childList: true, subtree: true })
+  }).observe(document.body, { childList: true, subtree: true })
 }

@@ -28,10 +28,16 @@ export default function App({ initialContext, onClose }: AppProps) {
       session.setTranscriptContext(initialContext)
     }
 
-    // Load any previously persisted style profile
     loadStoredProfile()
 
-    // Listen for service worker broadcasts (SESSION_READY, GENERATE_ALL_RESULT, etc.)
+    // Live context push — fired by content script when a new email is opened
+    // while the panel is already visible
+    const onContextUpdate = (e: Event) => {
+      const ctx = (e as CustomEvent).detail
+      if (ctx?.transcript) session.setTranscriptContext(ctx)
+    }
+    window.addEventListener('pca:context-update', onContextUpdate)
+
     const cleanup = onMessage((msg: ExtensionMessage) => {
       switch (msg.type) {
         case 'SESSION_READY':
@@ -62,6 +68,7 @@ export default function App({ initialContext, onClose }: AppProps) {
 
     return () => {
       cleanup()
+      window.removeEventListener('pca:context-update', onContextUpdate)
       session.reset()
       emailStore.reset()
       schedStore.reset()
