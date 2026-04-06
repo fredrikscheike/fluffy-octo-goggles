@@ -1,7 +1,10 @@
 import type { Request, Response } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
+import { config } from 'dotenv'
 import { buildStyleSystemPrompt, buildStyleUserPrompt } from '../prompts/style.js'
 import type { StyleProfileRequest, StyleProfileResponse } from '../types.js'
+
+config({ override: true })
 
 const MODEL = 'claude-opus-4-6'
 const client = new Anthropic()

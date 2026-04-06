@@ -1,9 +1,13 @@
 import type { Request, Response } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
+import { config } from 'dotenv'
 import { buildEmailSystemPrompt, buildEmailUserPrompt } from '../prompts/email.js'
 import { buildRecipientsSystemPrompt, buildRecipientsUserPrompt } from '../prompts/recipients.js'
 import { buildScheduleSystemPrompt, buildScheduleUserPrompt } from '../prompts/schedule.js'
 import type { AnalyzeRequest, AnalyzeResponse, Recipient } from '../types.js'
+
+// Override any shell-level empty ANTHROPIC_API_KEY with the value from .env
+config({ override: true })
 
 const MODEL = 'claude-opus-4-6'
 const client = new Anthropic()
