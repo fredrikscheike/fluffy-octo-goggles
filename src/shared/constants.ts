@@ -1,4 +1,4 @@
-export const BACKEND_BASE_URL = 'https://your-backend.example.com'
+export const DEFAULT_BACKEND_URL = 'http://localhost:3000'
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   USER_EMAIL:      'user_email',
   LEARNED_STYLE:   'learned_style',
   STYLE_PRESET:    'style_preset',
+  BACKEND_URL:     'backend_url',
+  API_KEY:         'api_key',
 } as const
 
 /** Number of sent emails to sample for style analysis */
