@@ -1,8 +1,6 @@
-import { useState, useCallback } from 'react'
-import { getCapturedEmail } from '../../content/drag-interceptor'
-import { useSessionStore } from '../store/session.store'
+import { useState, useEffect } from 'react'
+import { dragCallbacks } from '../../content/drag-interceptor'
 import type { TranscriptContext } from '../../shared/types/domain.types'
-import type { ExtensionMessage } from '../../shared/types/messages.types'
 
 interface Props {
   onTranscriptLoaded: (ctx: TranscriptContext) => void
@@ -13,102 +11,33 @@ type ZoneState = 'idle' | 'hover' | 'loading' | 'done' | 'error'
 export function DragDropZone({ onTranscriptLoaded }: Props) {
   const [state, setState] = useState<ZoneState>('idle')
   const [statusText, setStatusText] = useState('')
-  const session = useSessionStore()
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setState('hover')
-  }, [])
+  useEffect(() => {
+    // Register callbacks so the content-script drag interceptor can drive
+    // our visual state — drag events are handled at the document level because
+    // pointer-events:none on the shadow host prevents hit-testing into the
+    // closed shadow root.
+    dragCallbacks.onEnter   = () => setState('hover')
+    dragCallbacks.onLeave   = () => setState((s) => s === 'hover' ? 'idle' : s)
+    dragCallbacks.onLoading = () => { setState('loading'); setStatusText('Fetching email…') }
+    dragCallbacks.onDrop    = (ctx) => {
+      onTranscriptLoaded(ctx)
+      const subjectLine = ctx.transcript.match(/^Subject:\s*(.+)/m)?.[1] ?? 'email'
+      setState('done')
+      setStatusText(`Loaded: ${subjectLine}`)
+    }
+    dragCallbacks.onError   = (msg) => { setState('error'); setStatusText(msg) }
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setState('idle')
-  }, [])
+    return () => {
+      dragCallbacks.onEnter   = null
+      dragCallbacks.onLeave   = null
+      dragCallbacks.onLoading = null
+      dragCallbacks.onDrop    = null
+      dragCallbacks.onError   = null
+    }
+  }, [onTranscriptLoaded])
 
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      setState('loading')
-      setStatusText('Fetching email…')
-
-      const captured = getCapturedEmail()
-
-      // If we have a Gmail message ID, fetch the full body via background
-      if (captured?.messageId) {
-        const response = await new Promise<ExtensionMessage>((resolve) => {
-          chrome.runtime.sendMessage(
-            { type: 'FETCH_EMAIL_CONTENT', payload: { messageId: captured.messageId } },
-            resolve,
-          )
-        })
-
-        if (response?.type === 'EMAIL_CONTENT_RESULT') {
-          const { subject, from, body } = response.payload
-          const transcript = [
-            subject ? `Subject: ${subject}` : '',
-            from    ? `From: ${from}` : '',
-            '',
-            body,
-          ]
-            .filter((l) => l !== undefined)
-            .join('\n')
-            .trim()
-
-          onTranscriptLoaded({
-            transcript,
-            participantNames: from ? [from.replace(/<.*>/, '').trim()] : [],
-            contactEmails: [from?.match(/<(.+)>/)?.[1] ?? ''].filter(Boolean),
-            crmRecordId: null,
-            hostType: 'gmail',
-          })
-
-          setState('done')
-          setStatusText(`Loaded: ${subject || 'email'}`)
-          return
-        }
-
-        if (response?.type === 'EMAIL_CONTENT_ERROR') {
-          setState('error')
-          setStatusText(response.payload.message)
-          return
-        }
-      }
-
-      // Fallback: use whatever plain text the drag event carries + snippet from DOM capture
-      const dragText = e.dataTransfer.getData('text/plain')
-      const fallback = [
-        captured?.subject ? `Subject: ${captured.subject}` : '',
-        captured?.sender  ? `From: ${captured.sender}` : '',
-        '',
-        dragText || captured?.snippet || '',
-      ]
-        .join('\n')
-        .trim()
-
-      if (fallback.length > 20) {
-        onTranscriptLoaded({
-          transcript: fallback,
-          participantNames: captured?.sender ? [captured.sender] : [],
-          contactEmails: [],
-          crmRecordId: null,
-          hostType: 'gmail',
-        })
-        setState('done')
-        setStatusText(captured?.subject ? `Loaded: ${captured.subject}` : 'Email loaded')
-      } else {
-        setState('error')
-        setStatusText('Could not read email content')
-      }
-    },
-    [onTranscriptLoaded, session],
-  )
-
-  const reset = () => {
-    setState('idle')
-    setStatusText('')
-  }
+  const reset = () => { setState('idle'); setStatusText('') }
 
   const borderColor =
     state === 'hover'   ? 'border-indigo-500' :
@@ -123,29 +52,20 @@ export function DragDropZone({ onTranscriptLoaded }: Props) {
                           'bg-gray-50 dark:bg-gray-800/50'
 
   return (
-    <div
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      className={`
-        relative flex flex-col items-center justify-center gap-2
-        rounded-lg border-2 border-dashed px-4 py-5 text-center
-        transition-colors duration-150 select-none
-        ${borderColor} ${bgColor}
-      `}
-    >
+    <div className={`
+      flex flex-col items-center justify-center gap-2
+      rounded-lg border-2 border-dashed px-4 py-5 text-center
+      transition-colors duration-150 select-none
+      ${borderColor} ${bgColor}
+    `}>
       {state === 'idle' && (
         <>
           <svg className="h-7 w-7 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round"
               d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            Drag an email here
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            from your Gmail inbox list
-          </p>
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Drag an email here</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">from your Gmail inbox list</p>
         </>
       )}
 
@@ -153,7 +73,7 @@ export function DragDropZone({ onTranscriptLoaded }: Props) {
         <>
           <svg className="h-7 w-7 text-indigo-500 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round"
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 002 2z" />
           </svg>
           <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Drop to load</p>
         </>
@@ -163,8 +83,7 @@ export function DragDropZone({ onTranscriptLoaded }: Props) {
         <>
           <svg className="h-6 w-6 text-indigo-500 animate-spin" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           <p className="text-xs text-indigo-600 dark:text-indigo-400">{statusText}</p>
         </>

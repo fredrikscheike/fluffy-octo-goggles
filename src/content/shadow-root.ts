@@ -52,3 +52,7 @@ export function unmountShadowContainer(): void {
 export function isMounted(): boolean {
   return shadowHost !== null
 }
+
+export function getShadowHostRect(): DOMRect | null {
+  return shadowHost?.getBoundingClientRect() ?? null
+}
