@@ -1,6 +1,6 @@
 import { getAccessToken, getUserEmail } from './auth'
 import { analyzeTranscript, buildStyleProfile } from './api-client'
-import { sendEmail, fetchSentEmailSamples } from './gmail'
+import { sendEmail, fetchSentEmailSamples, fetchEmailById } from './gmail'
 import { createCalendarEvent } from './calendar'
 import { STORAGE_KEYS } from '../shared/constants'
 import type { ExtensionMessage } from '../shared/types/messages.types'
@@ -79,6 +79,16 @@ async function handleMessage(msg: ExtensionMessage, reply: SendResponse): Promis
           reply({ type: 'EVENT_CREATED', payload: result.data })
         } else {
           reply({ type: 'EVENT_CREATE_ERROR', payload: result.error })
+        }
+        break
+      }
+
+      case 'FETCH_EMAIL_CONTENT': {
+        const result = await fetchEmailById(msg.payload.messageId)
+        if (result.ok) {
+          reply({ type: 'EMAIL_CONTENT_RESULT', payload: result.data })
+        } else {
+          reply({ type: 'EMAIL_CONTENT_ERROR', payload: result.error })
         }
         break
       }

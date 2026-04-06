@@ -40,5 +40,8 @@ export type ExtensionMessage =
   | { type: 'STORE_LEARNED_STYLE';      payload: LearnedStyle }
   | { type: 'GET_LEARNED_STYLE' }
   | { type: 'LEARNED_STYLE_RESULT';     payload: { learnedStyle: LearnedStyle | null } }
+  | { type: 'FETCH_EMAIL_CONTENT';      payload: { messageId: string } }
+  | { type: 'EMAIL_CONTENT_RESULT';     payload: { subject: string; from: string; body: string; messageId: string } }
+  | { type: 'EMAIL_CONTENT_ERROR';      payload: ApiError }
 
 export type MessageType = ExtensionMessage['type']

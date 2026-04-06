@@ -3,6 +3,7 @@ import { PanelShell } from './components/layout/PanelShell'
 import { EmailReviewPanel } from './components/email/EmailReviewPanel'
 import { SchedulingPanel } from './components/scheduling/SchedulingPanel'
 import { WritingStylePanel } from './components/style/WritingStylePanel'
+import { DragDropZone } from './components/DragDropZone'
 import { useSessionStore } from './store/session.store'
 import { useEmailStore } from './store/email.store'
 import { useScheduleStore } from './store/schedule.store'
@@ -69,6 +70,9 @@ export default function App({ initialContext, onClose }: AppProps) {
 
   return (
     <PanelShell onClose={onClose}>
+      {!session.transcriptContext?.transcript && (
+        <DragDropZone onTranscriptLoaded={(ctx) => session.setTranscriptContext(ctx)} />
+      )}
       <WritingStylePanel />
       <EmailReviewPanel />
       <SchedulingPanel />

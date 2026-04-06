@@ -130,10 +130,46 @@ export async function fetchSentEmailSamples(maxResults: number): Promise<Result<
   return { ok: true, data: { samples } }
 }
 
+/**
+ * Fetch a single email by message ID and return subject, sender, and plain-text body.
+ */
+export async function fetchEmailById(
+  messageId: string,
+): Promise<Result<{ subject: string; from: string; body: string; messageId: string }>> {
+  const token = await getAccessToken()
+
+  let resp: Response
+  try {
+    resp = await fetch(
+      `${GMAIL_BASE}/users/me/messages/${messageId}?format=full&fields=payload`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+  } catch (e) {
+    return { ok: false, error: { code: 'INTERNAL_ERROR', message: String(e) } }
+  }
+
+  if (!resp.ok) {
+    return { ok: false, error: { code: 'INTERNAL_ERROR', message: `Gmail API ${resp.status}` } }
+  }
+
+  const msg = await resp.json() as { payload?: GmailPayload }
+  const payload = msg.payload
+
+  const getHeader = (name: string): string =>
+    payload?.headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? ''
+
+  const subject = getHeader('subject')
+  const from = getHeader('from')
+  const body = extractPlaintextFromPayload(payload) ?? ''
+
+  return { ok: true, data: { subject, from, body, messageId } }
+}
+
 interface GmailPayload {
   mimeType?: string
   body?: { data?: string; size?: number }
   parts?: GmailPayload[]
+  headers?: { name: string; value: string }[]
 }
 
 function extractPlaintextFromPayload(payload?: GmailPayload): string | null {

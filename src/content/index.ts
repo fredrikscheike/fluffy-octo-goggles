@@ -4,6 +4,7 @@ import { detectHost, extractTranscriptContext } from './transcript-extractor'
 import { watchForComposeWindow } from './host-adapters/gmail'
 import { mountShadowContainer, unmountShadowContainer, isMounted } from './shadow-root'
 import { injectTriggerButton } from './panel-trigger'
+import { initDragInterceptor } from './drag-interceptor'
 import type { ExtensionMessage } from '../shared/types/messages.types'
 
 // Dynamically imported at runtime so the CSS string can be injected into shadow DOM
@@ -58,8 +59,8 @@ if (host !== 'unknown') {
   injectTriggerButton().addEventListener('click', openPanel)
 
   if (host === 'gmail') {
-    // Also open when a compose window appears
     watchForComposeWindow(openPanel)
+    initDragInterceptor()
   }
 
   // SPA navigation: re-run extraction when the URL changes
